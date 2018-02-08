@@ -8,12 +8,14 @@ from __future__ import print_function, division
 
 import itertools
 from dask import get
-from dask.dot import dot_graph
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
+
+from base_model import BaseModel
+from lr import LRSchedule
 
 # --
 # Model definition
@@ -21,20 +23,18 @@ from torch.autograd import Variable
 class AccumulateException(Exception):
     pass
 
+
 class Accumulate(nn.Module):
-    def __init__(self):
+    def __init__(self, agg_fn=torch.mean):
         super(Accumulate, self).__init__()
+        self.agg_fn = agg_fn
     
-    def forward(self, args):
-        args = [a for a in args if a is not None]
-        if len(args) == 0:
+    def forward(self, parts):
+        parts = [part for part in parts if part is not None]
+        if len(parts) == 0:
             raise AccumulateException
-        
-        res = args[0]
-        for a in args[1:]:
-            res = res + a
-        
-        return res
+        else:
+            return self.agg_fn(torch.stack(parts), dim=0)
 
 
 class PBlock(nn.Module):
@@ -67,9 +67,9 @@ class PBlock(nn.Module):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
 
-class PipeNet(nn.Module):
-    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], num_classes=10):
-        super(PipeNet, self).__init__()
+class PipeNet(BaseModel):
+    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], num_classes=10, **kwargs):
+        super(PipeNet, self).__init__(**kwargs)
         
         # --
         # Preprocessing
@@ -126,6 +126,24 @@ class PipeNet(nn.Module):
         # Classifier
         
         self.linear = nn.Linear(512, num_classes)
+        
+        # --
+        # Set default pipes
+        
+        self.default_pipes = [(64, 128), (128, 256), (256, 512)]
+        self.reset_pipes()
+        
+        lr_scheduler = LRSchedule.constant(lr_init=0.1)
+        self.init_optimizer(
+            opt=torch.optim.SGD,
+            lr_scheduler=lr_scheduler,
+            params=self.parameters(),
+            momentum=0.9,
+            weight_decay=5e-4
+        )
+    
+    def reset_pipes(self):
+        self.set_pipes(self.default_pipes)
     
     def set_pipes(self, pipes):
         # Turn all pipes off
@@ -151,10 +169,10 @@ class PipeNet(nn.Module):
 
 if __name__ == "__main__":
     
-    model = ResNet()
+    model = PipeNet()
     print(model)
     
-    out = Variable(torch.randn(10, 3, 32, 32))
+    out = Variable(torch.randn(16, 3, 32, 32))
     
     model.set_pipes([(64, 128), (128, 256), (256, 512)])
-    model(out)
+    print(model(out).shape)
