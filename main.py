@@ -138,11 +138,14 @@ while roll_gen.step_index < args.total_steps:
     action_counts = list(roll_gen.batch['actions'].cpu().numpy().mean(axis=0))
     
     history.append({
-        "ppo_epoch" : ppo_epoch,
-        "step_index" : roll_gen.step_index,
-        "mean_reward" : mean_reward,
+        "ppo_epoch"     : ppo_epoch,
+        "step_index"    : roll_gen.step_index,
+        "mean_reward"   : mean_reward,
         "action_counts" : action_counts,
-        "elapsed_time" : time() - start_time,
+        "elapsed_time"  : time() - start_time,
+        "train_total_batches" : env.dataloaders['train'].total_batches,
+        "val_total_batches"   : env.dataloaders['val'].total_batches,
+        "test_total_batches"  : env.dataloaders['test'].total_batches,
     })
     
     print(history[-1])

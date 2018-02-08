@@ -24,6 +24,9 @@ class BaseModel(nn.Module):
         self.opt = None
         self.progress = 0
     
+    # --
+    # Optimization
+    
     def init_optimizer(self, opt, params, lr_scheduler, **kwargs):
         assert 'lr' not in kwargs, "BaseModel.init_optimizer: can't set LR from outside"
         self.opt = opt(params, lr=lr_scheduler(self.progress), **kwargs)
@@ -31,6 +34,9 @@ class BaseModel(nn.Module):
     def set_progress(self, progress):
         self.progress = progress
         LRSchedule.set_lr(self.opt, self.lr_scheduler(progress))
+    
+    # --
+    # Batch steps
     
     def train_batch(self, data, target):
         _ = self.train()
@@ -45,6 +51,9 @@ class BaseModel(nn.Module):
         _ = self.eval()
         output = self(data)
         return output
+    
+    # --
+    # Epoch steps
     
     def train_epoch(self, dataloaders, num_batches=np.inf):
         assert self.opt is not None, "BaseModel: self.opt is None"
