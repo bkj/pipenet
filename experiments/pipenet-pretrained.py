@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-    path-main.py
+    pipenet-pretrained.py
 """
 
 from __future__ import print_function, division

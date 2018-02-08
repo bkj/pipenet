@@ -23,12 +23,3 @@ def set_seeds(seed):
     np.random.seed(seed)
     _ = torch.manual_seed(seed + 123)
     _ = torch.cuda.manual_seed(seed + 456)
-
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        return x.view(x.shape[0], -1)
-
-
-def ablate(x, p):
-    return x * Variable(torch.rand((1,) + x.shape[1:]).cuda() > p).float()
