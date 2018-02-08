@@ -15,16 +15,13 @@ from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 
-from base_model import BaseModel
-from lr import LRSchedule
+from basenet import BaseNet
 
 # --
 # Model definition
 
-class AccumulateException(Exception):
-    def __init__(self, name):
-        raise Exception('AccumulateException: %s' % name)
-
+class PipeException(Exception):
+    pass
 
 class Accumulate(nn.Module):
     def __init__(self, agg_fn=torch.mean, name='noname'):
@@ -44,7 +41,7 @@ class Accumulate(nn.Module):
 
 
 class PBlock(nn.Module):
-    def __init__(self, in_planes, planes, stride=1, active=True):
+    def __init__(self, in_planes, planes, stride=1, active=True, verbose=False):
         super(PBlock, self).__init__()
         self.bn1   = nn.BatchNorm2d(in_planes)
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -54,14 +51,16 @@ class PBlock(nn.Module):
         if stride != 1 or in_planes != planes:
             self.shortcut = nn.Sequential(nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False))
         
-        self.active = active
+        self.active    = active
+        self.verbose   = verbose
         self.in_planes = in_planes
-        self.planes = planes
-        self.stride = stride
+        self.planes    = planes
+        self.stride    = stride
     
     def forward(self, x):
         if self.active and (x is not None):
-            print('run:', self)
+            if self.verbose:
+                print('run:', self)
             
             out = F.relu(self.bn1(x))
             shortcut = self.shortcut(out) if hasattr(self, 'shortcut') else x
@@ -75,9 +74,11 @@ class PBlock(nn.Module):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
 
-class PipeNet(BaseModel):
-    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], num_classes=10, **kwargs):
+class PipeNet(BaseNet):
+    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], lr_scheduler=None, num_classes=10, **kwargs):
         super(PipeNet, self).__init__(**kwargs)
+        
+        assert lr_scheduler is not None, "PipeNet.__init__: lr_scheduler is None"
         
         # --
         # Preprocessing
@@ -116,7 +117,6 @@ class PipeNet(BaseModel):
         self.default_pipes = [(64, 128), (128, 256), (256, 512)]
         self.reset_pipes()
         
-        lr_scheduler = LRSchedule.constant(lr_init=0.1)
         self.init_optimizer(
             opt=torch.optim.SGD,
             lr_scheduler=lr_scheduler,
@@ -129,14 +129,17 @@ class PipeNet(BaseModel):
         self.set_pipes(self.default_pipes)
     
     def set_pipes(self, pipes):
+        self.active_pipes = [tuple(pipe) for pipe in pipes]
+        
         # Turn all pipes off
         for pipe in self.pipes.values():
             pipe.active = False
         
         # Turn active ones back on
-        for pipe in pipes:
-            self.pipes[tuple(pipe)].active = True
+        for pipe in self.active_pipes:
+            self.pipes[pipe].active = True
         
+        # Filter edges in graph
         self.graph = {
             # First cell
             'graph_input' : None,
@@ -170,6 +173,9 @@ class PipeNet(BaseModel):
         out = get(self.graph, layer)
         self.graph['graph_input'] = None
         
+        if out is None:
+            raise PipeException
+        
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
@@ -181,15 +187,7 @@ if __name__ == "__main__":
     model = PipeNet()
     print(model)
     
-    out = Variable(torch.randn(16, 3, 32, 32))
+    x = Variable(torch.randn(16, 3, 32, 32))
     
     model.set_pipes([(64, 128), (128, 256), (256, 512)])
-    print(model(out).shape)
-
-# --
-
-model.set_pipes([(64, 128), (64, 512)])
-
-t = model(out)
-
-
+    print(model(x).shape)

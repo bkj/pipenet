@@ -1,40 +1,36 @@
 #!/usr/bin/env python
 
 """
-    pipenet-pretrained.py
+    main.py
 """
 
 from __future__ import print_function, division
 
 import os
 import sys
-import json
 import argparse
-import itertools
 import numpy as np
-import pandas as pd
 from time import time
-from tqdm import tqdm
 
 import torch
-from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 
+# Plotting
+from rsub import *
+from matplotlib import pyplot as plt
+
+# Pipenet
+from helpers import set_seeds, to_numpy
+from data import make_cifar_dataloaders
+from pipenet import PipeNet
+from envs import PretrainedEnv, DummyTrainEnv
+
+# PPO
 sys.path.append('/home/bjohnson/projects/simple_ppo')
 from models.path import SinglePathPPO
 from rollouts import RolloutGenerator
 
-from helpers import set_seeds, to_numpy
-from data import make_cifar_dataloaders
-from pipenet import PipeNet, AccumulateException
-from envs import PretrainedEnv, DummyTrainEnv
-
-from rsub import *
-from matplotlib import pyplot as plt
-
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 # --
 # Params
@@ -44,7 +40,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--env', type=str, default='pretrained')
-    parser.add_argument('--pretrained-path', type=str, default='./models/pipenet-cyclical-20')
+    parser.add_argument('--pretrained-weights', type=str, default='./models/pipenet-cyclical-20-0.900000')
     
     parser.add_argument('--total-steps', type=int, default=int(40e6))
     parser.add_argument('--steps-per-batch', type=int, default=64)
@@ -61,7 +57,7 @@ def parse_args():
     parser.add_argument('--adam-lr', type=float, default=1e-3)
     parser.add_argument('--entropy-penalty', type=float, default=0.001)
     
-    parser.add_argument('--seed', type=int, default=987)
+    parser.add_argument('--seed', type=int, default=123)
     
     parser.add_argument('--cuda', action="store_true")
     parser.add_argument('--log-dir', type=str, default="./logs")
@@ -78,21 +74,20 @@ set_seeds(args.seed)
 # --
 # IO
 
-dataloaders = make_cifar_dataloaders(train_size=0.9, download=False, seed=np.random.choice(1000))
+dataloaders = make_cifar_dataloaders(train_size=0.9, download=False, seed=args.seed)
 
 # --
 # Define environment
 
 if args.env == 'pretrained':
     worker = PipeNet(loss_fn=F.cross_entropy).cuda()
-    worker.load_state_dict(torch.load(args.pretrained_path))
+    worker.load_state_dict(torch.load(args.pretrained_weights))
     env = PretrainedEnv(worker=worker, dataloaders=dataloaders, seed=args.seed)
 elif args.env == 'dummy_train':
     worker = PipeNet(loss_fn=F.cross_entropy).cuda()
     env = DummyTrainEnv(worker=worker, dataloaders=dataloaders, seed=args.seed)
 else:
     raise Exception('unknown env %s' % args.env, file=sys.stderr)
-
 
 ppo = SinglePathPPO(
     n_outputs=len(worker.pipes),
@@ -173,7 +168,15 @@ while roll_gen.step_index < args.total_steps:
 # --
 # Inspect
 
+
+worker.reset_pipes()
+
+worker.eval_epoch(dataloaders, mode='test')
+worker.eval_epoch(dataloaders, mode='val')
+worker.eval_epoch(dataloaders, mode='test')
+
 _ = plt.plot([h['mean_reward'] for h in history][:300])
+_ = plt.ylim(0.85, 0.95)
 show_plot()
 
 action_counts = np.vstack([h['action_counts'] for h in history])[:500]
@@ -183,4 +186,6 @@ for i, r in enumerate(action_counts.T):
 plt.legend(loc='lower right')
 show_plot()
 
+
+]
 

@@ -2,8 +2,9 @@
 
 # run.sh
 
-CUDA_VISIBLE_DEVICES=1 python experiments/pipenet-pretrained.py 
 
-CUDA_VISIBLE_DEVICES=1 python experiments/pipenet-pretrained.py --pretrained-path ./models/pipenet-constant-20
+export CUDA_VISIBLE_DEVICES=1
 
-CUDA_VISIBLE_DEVICES=1 python experiments/pipenet-pretrained.py --env dummy_train
+python pretrain.py --train-size 0.9 --seed 123 --outpath ./models/linear-0.9
+
+python main.py --pretrained-weights ./models/linear-0.9/weights

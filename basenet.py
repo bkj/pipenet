@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-    base_model.py
+    basenet.py
 """
 
 from __future__ import print_function, division
@@ -16,20 +16,22 @@ from torch.autograd import Variable
 from helpers import to_numpy
 from lr import LRSchedule
 
-class BaseModel(nn.Module):
+class BaseNet(nn.Module):
     
     def __init__(self, loss_fn=F.cross_entropy):
-        super(BaseModel, self).__init__()
+        super(BaseNet, self).__init__()
         self.loss_fn = loss_fn
         self.opt = None
         self.progress = 0
+        self.epoch = 0
     
     # --
     # Optimization
     
     def init_optimizer(self, opt, params, lr_scheduler, **kwargs):
-        assert 'lr' not in kwargs, "BaseModel.init_optimizer: can't set LR from outside"
-        self.opt = opt(params, lr=lr_scheduler(self.progress), **kwargs)
+        assert 'lr' not in kwargs, "BaseNet.init_optimizer: can't set LR from outside"
+        self.lr_scheduler = lr_scheduler
+        self.opt = opt(params, lr=self.lr_scheduler(0), **kwargs)
     
     def set_progress(self, progress):
         self.progress = progress
@@ -56,12 +58,14 @@ class BaseModel(nn.Module):
     # Epoch steps
     
     def train_epoch(self, dataloaders, num_batches=np.inf):
-        assert self.opt is not None, "BaseModel: self.opt is None"
+        assert self.opt is not None, "BaseNet: self.opt is None"
         
         loader = dataloaders['train']
         correct, total = 0, 0
         for batch_idx, (data, target) in enumerate(loader):
             data, target = Variable(data.cuda()), Variable(target.cuda())
+            
+            self.set_progress(self.epoch + batch_idx / len(loader))
             
             output = self.train_batch(data, target)
             
@@ -71,11 +75,11 @@ class BaseModel(nn.Module):
             if batch_idx > num_batches:
                 break
         
-        self.score['train'] = correct / total
-        return self.score['train']
+        self.epoch += 1
+        return correct / total
     
     def eval_epoch(self, dataloaders, mode='val', num_batches=np.inf):
-        assert self.opt is not None, "BaseModel: self.opt is None"
+        assert self.opt is not None, "BaseNet: self.opt is None"
         
         loader = dataloaders[mode]
         if loader is None:
@@ -93,6 +97,5 @@ class BaseModel(nn.Module):
                 
                 if batch_idx > num_batches:
                     break
-                
-            self.score[mode] = correct / total
-            return self.score[mode]
+            
+            return correct / total

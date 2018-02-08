@@ -13,7 +13,7 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 
 from helpers import to_numpy
-from pipenet import AccumulateException
+from pipenet import PipeException
 
 # --
 # Helpers
@@ -43,33 +43,18 @@ class Looper(object):
 # Environments
 
 class BaseEnv(object):
-    def __init__(self, worker, dataloaders, seed=123, cache_data=True):
+    def __init__(self, worker, dataloaders, seed=222):
         
         self.worker = worker
         self._pipes = np.array(list(worker.pipes.keys()))
         
-        if cache_data:
-            self.dataloaders = {
-                "train" : Looper(dataloaders['train']),
-                "val"   : Looper(dataloaders['val']),
-                "test"  : Looper(dataloaders['test']),
-            }
-        else:
-            raise Exception('not implemented w/o cache_data')
+        self.dataloaders = {
+            "train" : Looper(dataloaders['train']),
+            "val"   : Looper(dataloaders['val']),
+            "test"  : Looper(dataloaders['test']),
+        }
         
         self.rs = np.random.RandomState(seed=seed)
-    
-    # def _iterwrapper(self, loader, mode):
-    #     data = list(iter(loader))
-    #     X = torch.cat([t[0] for t in data])
-    #     y = torch.cat([t[1] for t in data])
-        
-    #     while True:
-    #         chunks = torch.chunk(torch.randperm(X.shape[0]), X.shape[0] // loader.batch_size)
-    #         for chunk in chunks:
-    #             yield X[chunk], y[chunk]
-            
-    #         self.epochs[mode] += 1
     
     def _random_state(self):
         return self.rs.normal(0, 1, (8, 32))
@@ -91,6 +76,8 @@ class BaseEnv(object):
 
 
 class PretrainedEnv(BaseEnv):
+    _eval_mode = 'val'
+    
     def _step(self, mask):
         
         # --
@@ -98,7 +85,7 @@ class PretrainedEnv(BaseEnv):
         
         _ = self.worker.eval()
         
-        data, target = next(self.dataloaders['val'])
+        data, target = next(self.dataloaders[self._eval_mode])
         data = Variable(data, volatile=True).cuda()
         
         mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
@@ -107,38 +94,40 @@ class PretrainedEnv(BaseEnv):
         try:
             output = self.worker(data)
             return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
-        except AccumulateException:
+        except PipeException:
             return 0.0
         except:
             raise
 
 
-class DummyTrainEnv(BaseEnv):
-    def _step(self, mask):
+# class DummyTrainEnv(BaseEnv):
+#     _eval_mode = 'val'
+    
+#     def _step(self, mask):
         
-        # --
-        # Train (using default pipes)
+#         # --
+#         # Train (using default pipes)
         
-        self.worker.reset_pipes()
-        data, target = next(self.dataloaders['train'])
-        data, target = Variable(data.cuda()), Variable(target.cuda())
-        _ = self.worker.train_batch(data, target)
+#         self.worker.reset_pipes()
+#         data, target = next(self.dataloaders['train'])
+#         data, target = Variable(data.cuda()), Variable(target.cuda())
+#         _ = self.worker.train_batch(data, target)
         
-        # --
-        # Eval
+#         # --
+#         # Eval
         
-        _ = self.worker.eval()
+#         _ = self.worker.eval()
         
-        data, target = next(self.dataloaders['val'])
-        data = Variable(data, volatile=True).cuda()
+#         data, target = next(self.dataloaders[self._eval_mode])
+#         data = Variable(data, volatile=True).cuda()
         
-        mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-        self.worker.set_pipes(mask_pipes)
+#         mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
+#         self.worker.set_pipes(mask_pipes)
         
-        try:
-            output = self.worker.eval_batch(data)
-            return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
-        except AccumulateException:
-            return 0.0
-        except:
-            raise
+#         try:
+#             output = self.worker.eval_batch(data)
+#             return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
+#         except PipeException:
+#             return 0.0
+#         except:
+#             raise

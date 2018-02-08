@@ -4,11 +4,16 @@
     data.py
 """
 
+from __future__ import print_function
+
 import numpy as np
 from sklearn.model_selection import train_test_split
 
 import torch
 import torchvision
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def make_mnist_dataloaders(root='data', mode='mnist', train_size=1.0, train_batch_size=256, 
     eval_batch_size=256, num_workers=8, seed=1111, download=False, pretensor=False, pin_memory=False):
@@ -58,6 +63,7 @@ def make_cifar_dataloaders(root='data', mode='CIFAR10', train_size=1.0, train_ba
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
+        # !! `trainsform_train` gets applied to _val_ dataset as well
         
         transform_test = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
