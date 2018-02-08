@@ -8,6 +8,7 @@ from __future__ import print_function, division
 
 import itertools
 from dask import get
+from pprint import pprint
 
 import torch
 from torch import nn
@@ -21,20 +22,25 @@ from lr import LRSchedule
 # Model definition
 
 class AccumulateException(Exception):
-    pass
+    def __init__(self, name):
+        raise Exception('AccumulateException: %s' % name)
 
 
 class Accumulate(nn.Module):
-    def __init__(self, agg_fn=torch.mean):
+    def __init__(self, agg_fn=torch.mean, name='noname'):
         super(Accumulate, self).__init__()
         self.agg_fn = agg_fn
+        self.name = name
     
     def forward(self, parts):
         parts = [part for part in parts if part is not None]
         if len(parts) == 0:
-            raise AccumulateException
+            return None
         else:
             return self.agg_fn(torch.stack(parts), dim=0)
+    
+    def __repr__(self):
+        return 'Accumulate(%s)' % self.name
 
 
 class PBlock(nn.Module):
@@ -54,7 +60,9 @@ class PBlock(nn.Module):
         self.stride = stride
     
     def forward(self, x):
-        if self.active:
+        if self.active and (x is not None):
+            print('run:', self)
+            
             out = F.relu(self.bn1(x))
             shortcut = self.shortcut(out) if hasattr(self, 'shortcut') else x
             out = self.conv1(out)
@@ -97,31 +105,6 @@ class PipeNet(BaseModel):
         for k, v in self.pipes.items():
             self.add_module(str(k), v)
         
-        self.graph = {
-            # First cell
-            'graph_input' : None,
-            
-            64        : (self.cells[64], 'graph_input'),
-            (64, 128) : (self.pipes[(64, 128)], 64),
-            (64, 256) : (self.pipes[(64, 256)], 64),
-            (64, 512) : (self.pipes[(64, 512)], 64),
-            
-            # Second cell
-            '128_acc'  : (Accumulate(), [(64, 128)]),
-            128        : (self.cells[128], '128_acc'),
-            (128, 256) : (self.pipes[(128, 256)], 128),
-            (128, 512) : (self.pipes[(128, 512)], 128),
-            
-            # Third cell
-            '256_acc'  : (Accumulate(), [(64, 256), (128, 256)]),
-            256        : (self.cells[256], '256_acc'),
-            (256, 512) : (self.pipes[(256, 512)], 256),
-            
-            # Fourth cell
-            '512_acc'  : (Accumulate(), [(64, 512), (128, 512), (256, 512)]),
-            512        : (self.cells[512], '512_acc'),
-        }
-        
         # --
         # Classifier
         
@@ -153,12 +136,38 @@ class PipeNet(BaseModel):
         # Turn active ones back on
         for pipe in pipes:
             self.pipes[tuple(pipe)].active = True
+        
+        self.graph = {
+            # First cell
+            'graph_input' : None,
+            
+            64         : (self.cells[64], 'graph_input'),
+            
+            (64, 128)  : (self.pipes[(64, 128)], 64),
+            '128_acc'  : (Accumulate(name='128_acc'), self._filter_pipes([(64, 128)])),
+            128        : (self.cells[128], '128_acc'),
+            
+            (64, 256)  : (self.pipes[(64, 256)], 64),
+            (128, 256) : (self.pipes[(128, 256)], 128),
+            '256_acc'  : (Accumulate(name='256_acc'), self._filter_pipes([(64, 256), (128, 256)])),
+            256        : (self.cells[256], '256_acc'),
+            
+            (64, 512)  : (self.pipes[(64, 512)], 64),
+            (128, 512) : (self.pipes[(128, 512)], 128),
+            (256, 512) : (self.pipes[(256, 512)], 256),
+            '512_acc'  : (Accumulate(name='512_acc'), self._filter_pipes([(64, 512), (128, 512), (256, 512)])),
+            512        : (self.cells[512], '512_acc'),
+        }
     
-    def forward(self, x):
+    def _filter_pipes(self, pipes):
+        active_pipe_names = [pipe_name for pipe_name,pipe in self.pipes.items() if pipe.active]
+        return [pipe for pipe in pipes if pipe in active_pipe_names]
+    
+    def forward(self, x, layer=512):
         out = F.relu(self.bn1(self.conv1(x)))
         
         self.graph['graph_input'] = out
-        out = get(self.graph, 512)
+        out = get(self.graph, layer)
         self.graph['graph_input'] = None
         
         out = F.avg_pool2d(out, 4)
@@ -176,3 +185,11 @@ if __name__ == "__main__":
     
     model.set_pipes([(64, 128), (128, 256), (256, 512)])
     print(model(out).shape)
+
+# --
+
+model.set_pipes([(64, 128), (64, 512)])
+
+t = model(out)
+
+

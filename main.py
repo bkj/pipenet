@@ -143,9 +143,15 @@ while roll_gen.step_index < args.total_steps:
         "mean_reward"   : mean_reward,
         "action_counts" : action_counts,
         "elapsed_time"  : time() - start_time,
+        
         "train_total_batches" : env.dataloaders['train'].total_batches,
         "val_total_batches"   : env.dataloaders['val'].total_batches,
         "test_total_batches"  : env.dataloaders['test'].total_batches,
+        
+        "train_epochs" : env.dataloaders['train'].epochs,
+        "val_epochs"   : env.dataloaders['val'].epochs,
+        "test_epochs"  : env.dataloaders['test'].epochs,
+        
     })
     
     print(history[-1])
