@@ -74,8 +74,10 @@ class PBlock(nn.Module):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
 class PipeNet(BaseNet):
-    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], lr_scheduler=None, num_classes=10, **kwargs):
+    def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], lr_scheduler=None, num_classes=10, blacklist=None, **kwargs):
         super(PipeNet, self).__init__(**kwargs)
+        
+        blacklist = blacklist if blacklist is not None else set([])
         
         # --
         # Preprocessing
@@ -98,10 +100,12 @@ class PipeNet(BaseNet):
             self.pipes[(cell_size_0, cell_size_1)] = block(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
         
         for k, v in self.cells.items():
-            self.add_module(str(k), v)
+            if k not in blacklist:
+                self.add_module(str(k), v)
         
         for k, v in self.pipes.items():
-            self.add_module(str(k), v)
+            if k not in blacklist:
+                self.add_module(str(k), v)
         
         # --
         # Classifier

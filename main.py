@@ -8,11 +8,13 @@ from __future__ import print_function, division
 
 import os
 import sys
+import json
 import pickle
 import atexit
 import argparse
 import numpy as np
 from time import time
+from collections import OrderedDict
 
 import torch
 from torch.nn import functional as F
@@ -49,8 +51,13 @@ def parse_args():
     parser.add_argument('--learn-mask', action="store_true")
     parser.add_argument('--train-mask', action="store_true")
     
+    # >>
+    parser.add_argument('--blacklist', action="store_true")
+    # <<
+    
     parser.add_argument('--no-horizon', action="store_true") # infinite vs 0 horizon
     
+    parser.add_argument('--train-size', type=float, default=0.9)
     parser.add_argument('--child-lr-init', type=float, default=0.01)
     parser.add_argument('--child-lr-schedule', type=str, default='constant')
     parser.add_argument('--child-lr-epochs', type=int, default=1000) # !! _estimated_
@@ -92,13 +99,13 @@ def parse_args():
 # Args
 
 args = parse_args()
-print(args)
+print(json.dumps(vars(args), indent=2), file=sys.stderr)
 set_seeds(args.seed)
 
 # --
 # IO
 
-dataloaders = make_cifar_dataloaders(train_size=0.9, download=False, seed=args.seed)
+dataloaders = make_cifar_dataloaders(train_size=args.train_size, download=False, seed=args.seed)
 
 # --
 # Define environment
@@ -137,7 +144,6 @@ ppo = SinglePathPPO(
     clip_eps=args.clip_eps,
     cuda=args.cuda,
 )
-print(ppo, file=sys.stderr)
 
 if args.cuda:
     ppo = ppo.cuda()
@@ -172,20 +178,22 @@ while roll_gen.step_index < args.total_steps:
     mean_reward = roll_gen.batch['rewards'].mean()
     action_counts = list(roll_gen.batch['actions'].cpu().numpy().mean(axis=0))
     
-    history.append({
-        "ppo_epoch"     : ppo_epoch,
-        "step_index"    : roll_gen.step_index,
-        "mean_reward"   : mean_reward,
-        "action_counts" : action_counts,
-        "elapsed_time"  : time() - start_time,
+    history.append(OrderedDict([
+        ("ppo_epoch",     ppo_epoch),
+        ("step_index",    roll_gen.step_index),
+        ("mean_reward",   mean_reward),
+        ("action_counts", action_counts),
+        ("elapsed_time",  time() - start_time),
         
-        "train_epochs" : env.dataloaders['train'].epochs,
-        "val_epochs"   : env.dataloaders['val'].epochs,
-        "test_epochs"  : env.dataloaders['test'].epochs,
+        ("train_epochs", env.dataloaders['train'].epochs),
+        ("val_epochs",   env.dataloaders['val'].epochs),
+        ("test_epochs",  env.dataloaders['test'].epochs),
         
-        "learn_mask" : args.learn_mask,
-        "pretrained_weights" : args.pretrained_weights is not None,
-    })
+        ("learn_mask", args.learn_mask),
+        ("train_mask", args.train_mask),
+        
+        ("pretrained_weights", args.pretrained_weights is not None),
+    ]))
     
     print(history[-1])
     

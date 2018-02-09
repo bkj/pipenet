@@ -52,6 +52,7 @@ class BaseEnv(object):
         
         self.worker = worker
         self._pipes = np.array(list(worker.pipes.keys()))
+        
         self.learn_mask = learn_mask
         self.train_mask = train_mask
         self.no_horizon = no_horizon
@@ -83,7 +84,6 @@ class BaseEnv(object):
         return state, payout, is_done, None
     
     def _eval(self, mask):
-        
         data, target = next(self.dataloaders[self._eval_mode])
         data = Variable(data, volatile=True).cuda()
         
@@ -99,22 +99,30 @@ class BaseEnv(object):
             return 0.0
         except:
             raise
+    
+    def _train(self, mask):
+        data, target = next(self.dataloaders['train'])
+        data, target = Variable(data.cuda()), Variable(target.cuda())
+        
+        if self.train_mask:
+            mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
+            self.worker.set_pipes(mask_pipes)
+        else:
+            self.worker.reset_pipes()
+        
+        try:
+            return self.worker.train_batch(data, target)
+        except PipeException:
+            return 0.0
+        except:
+            raise
 
 
 class TrainEnv(BaseEnv):
     def step(self, masks):
         
-        # Take train steps
         for mask in masks:
-            data, target = next(self.dataloaders['train'])
-            data, target = Variable(data.cuda()), Variable(target.cuda())
-            
-            if self.train_mask:
-                mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-                self.worker.set_pipes(mask_pipes)
-            else:
-                self.worker.reset_pipes()
-            
-            _ = self.worker.train_batch(data, target)
+            _ = self._train(mask)
         
         return super(TrainEnv, self).step(masks)
+

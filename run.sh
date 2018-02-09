@@ -66,6 +66,8 @@ python main.py \
     --no-horizon \
     --outpath ./results/pipenet.pkl
 
+# Number of train batches here is off, because some of the batches fail
+# Should keep track of number of failed training pulls
 
 # --
 # Open questions
