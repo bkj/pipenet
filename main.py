@@ -8,6 +8,7 @@ from __future__ import print_function, division
 
 import os
 import sys
+import pickle
 import argparse
 import numpy as np
 from time import time
@@ -24,13 +25,22 @@ from matplotlib import pyplot as plt
 from helpers import set_seeds, to_numpy
 from data import make_cifar_dataloaders
 from pipenet import PipeNet
-from envs import PretrainedEnv, DummyTrainEnv
+from envs import PretrainedEnv#, DummyTrainEnv
 
 # PPO
 sys.path.append('/home/bjohnson/projects/simple_ppo')
 from models.path import SinglePathPPO
 from rollouts import RolloutGenerator
 
+# --
+# Helpers
+
+import atexit
+
+def save():
+    pickle.dump(history, open('last-history.pkl', 'wb'))
+
+atexit.register(save)
 
 # --
 # Params
@@ -40,7 +50,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--env', type=str, default='pretrained')
-    parser.add_argument('--pretrained-weights', type=str, default='./models/pipenet-cyclical-20-0.900000')
+    parser.add_argument('--pretrained-weights', type=str, default='./models/linear-0.9/weights')
     
     parser.add_argument('--total-steps', type=int, default=int(40e6))
     parser.add_argument('--steps-per-batch', type=int, default=64)
@@ -165,6 +175,7 @@ while roll_gen.step_index < args.total_steps:
     
     ppo_epoch += 1
 
+
 # --
 # Inspect
 
@@ -185,7 +196,3 @@ for i, r in enumerate(action_counts.T):
 
 plt.legend(loc='lower right')
 show_plot()
-
-
-]
-

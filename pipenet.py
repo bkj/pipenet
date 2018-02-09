@@ -73,12 +73,9 @@ class PBlock(nn.Module):
     def __repr__(self):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
-
 class PipeNet(BaseNet):
     def __init__(self, block=PBlock, num_blocks=[2, 2, 2, 2], lr_scheduler=None, num_classes=10, **kwargs):
         super(PipeNet, self).__init__(**kwargs)
-        
-        assert lr_scheduler is not None, "PipeNet.__init__: lr_scheduler is None"
         
         # --
         # Preprocessing

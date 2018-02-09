@@ -72,5 +72,5 @@ if __name__ == "__main__":
     
     model_path = os.path.join(args.outpath, 'weights')
     print('saving model: %s' % model_path, file=sys.stderr)
-    torch.save(net.state_dict(), model_path)
+    torch.save(worker.state_dict(), model_path)
 

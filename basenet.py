@@ -30,12 +30,13 @@ class BaseNet(nn.Module):
     
     def init_optimizer(self, opt, params, lr_scheduler, **kwargs):
         assert 'lr' not in kwargs, "BaseNet.init_optimizer: can't set LR from outside"
-        self.lr_scheduler = lr_scheduler
-        self.opt = opt(params, lr=self.lr_scheduler(0), **kwargs)
+        if lr_scheduler is not None:
+            self.lr_scheduler = lr_scheduler
+            self.opt = opt(params, lr=self.lr_scheduler(0), **kwargs)
     
     def set_progress(self, progress):
-        self.progress = progress
-        LRSchedule.set_lr(self.opt, self.lr_scheduler(progress))
+        self.progress, self.lr = progress, self.lr_scheduler(progress)
+        LRSchedule.set_lr(self.opt, self.lr)
     
     # --
     # Batch steps
