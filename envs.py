@@ -43,10 +43,18 @@ class Looper(object):
 # Environments
 
 class BaseEnv(object):
-    def __init__(self, worker, dataloaders, seed=222):
+    _eval_mode = 'val'
+    
+    def __init__(self, worker=None, dataloaders=None, seed=222, learn_mask=True, train_mask=False, no_horizon=False):
+        
+        assert worker is not None
+        assert dataloaders is not None
         
         self.worker = worker
         self._pipes = np.array(list(worker.pipes.keys()))
+        self.learn_mask = learn_mask
+        self.train_mask = train_mask
+        self.no_horizon = no_horizon
         
         self.dataloaders = {
             "train" : Looper(dataloaders['train']),
@@ -62,72 +70,51 @@ class BaseEnv(object):
     def reset(self):
         return self._random_state()
     
-    def step(self, actions):
+    def step(self, masks):
         payout = []
-        for action in actions:
-            payout.append(self._step(action))
+        for mask in masks:
+            payout.append(self._eval(mask))
         
         payout = np.array(payout).reshape(-1, 1)
         
-        is_done = np.array([False] * actions.shape[0]).reshape(-1, 1)
+        is_done = np.array([self.no_horizon] * masks.shape[0]).reshape(-1, 1)
         state = self._random_state()
         
         return state, payout, is_done, None
-
-
-class PretrainedEnv(BaseEnv):
-    _eval_mode = 'val'
     
-    def _step(self, mask):
-        
-        # --
-        # Eval
-        
-        _ = self.worker.eval()
+    def _eval(self, mask):
         
         data, target = next(self.dataloaders[self._eval_mode])
         data = Variable(data, volatile=True).cuda()
         
-        mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-        self.worker.set_pipes(mask_pipes)
+        if self.learn_mask:
+            mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
+            self.worker.set_pipes(mask_pipes)
+        else:
+            self.worker.reset_pipes()
         
         try:
-            output = self.worker(data)
-            return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
+            return self.worker.eval_batch(data, target)
         except PipeException:
             return 0.0
         except:
             raise
 
 
-# class DummyTrainEnv(BaseEnv):
-#     _eval_mode = 'val'
-    
-#     def _step(self, mask):
+class TrainEnv(BaseEnv):
+    def step(self, masks):
         
-#         # --
-#         # Train (using default pipes)
+        # Take train steps
+        for mask in masks:
+            data, target = next(self.dataloaders['train'])
+            data, target = Variable(data.cuda()), Variable(target.cuda())
+            
+            if self.train_mask:
+                mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
+                self.worker.set_pipes(mask_pipes)
+            else:
+                self.worker.reset_pipes()
+            
+            _ = self.worker.train_batch(data, target)
         
-#         self.worker.reset_pipes()
-#         data, target = next(self.dataloaders['train'])
-#         data, target = Variable(data.cuda()), Variable(target.cuda())
-#         _ = self.worker.train_batch(data, target)
-        
-#         # --
-#         # Eval
-        
-#         _ = self.worker.eval()
-        
-#         data, target = next(self.dataloaders[self._eval_mode])
-#         data = Variable(data, volatile=True).cuda()
-        
-#         mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-#         self.worker.set_pipes(mask_pipes)
-        
-#         try:
-#             output = self.worker.eval_batch(data)
-#             return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
-#         except PipeException:
-#             return 0.0
-#         except:
-#             raise
+        return super(TrainEnv, self).step(masks)

@@ -50,10 +50,10 @@ class BaseNet(nn.Module):
         self.opt.step()
         return output
     
-    def eval_batch(self, data):
+    def eval_batch(self, data, target):
         _ = self.eval()
         output = self(data)
-        return output
+        return (to_numpy(output).argmax(axis=1) == to_numpy(target)).mean()
     
     # --
     # Epoch steps
