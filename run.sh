@@ -78,10 +78,11 @@ python main.py \
     --train-mask \
     --outpath ./results/pipenet-qblock-2.pkl
 
-# Number of train batches here is off, because some of the batches fail
+# Number of train batches here is high, because some of the batches fail
 # Should keep track of number of failed training pulls
 
 # --
 # Open questions
 
 # !! How should the attribution business be working?
+#   Should record number of times a cell is sucessfully trained

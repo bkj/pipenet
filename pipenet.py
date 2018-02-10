@@ -11,6 +11,7 @@ import itertools
 import numpy as np
 from dask import get
 from pprint import pprint
+from collections import OrderedDict
 
 import torch
 from torch import nn
@@ -128,11 +129,11 @@ class PipeNet(BaseNet):
         
         cell_sizes = [int(c) for c in 2 ** np.arange(6, 10)]
         
-        self.cells = {}
+        self.cells = OrderedDict([])
         for cell_size in cell_sizes:
             self.cells[cell_size] = PBlock(cell_size, cell_size, stride=1)
         
-        self.pipes = {}
+        self.pipes = OrderedDict([])
         for cell_size_0, cell_size_1 in itertools.combinations(cell_sizes, 2):
             self.pipes[(cell_size_0, cell_size_1, 0)] = PBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
             self.pipes[(cell_size_0, cell_size_1, 1)] = QBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
@@ -143,6 +144,8 @@ class PipeNet(BaseNet):
         for k, v in self.pipes.items():
             self.add_module(str(k), v)
         
+        self.pipe_names = np.array(list(self.pipes.keys()))
+        
         # --
         # Classifier
         
@@ -151,7 +154,7 @@ class PipeNet(BaseNet):
         # --
         # Set default pipes
         
-        self.default_pipes = zip(cell_sizes[:-1], cell_sizes[1:], [0] * (len(cell_sizes) - 1)) # [(64, 128, 0), (128, 256, 0), (256, 512, 0)]
+        self.default_pipes = zip(cell_sizes[:-1], cell_sizes[1:], [0] * (len(cell_sizes) - 1))
         print('default_pipes: ', self.default_pipes)
         self.reset_pipes()
         
@@ -166,38 +169,37 @@ class PipeNet(BaseNet):
     def reset_pipes(self):
         self.set_pipes(self.default_pipes)
     
+    def set_pipes_mask(self, mask):
+        self.set_pipes(self.pipe_names[mask])
+    
     def set_pipes(self, pipes):
         self.active_pipes = [tuple(pipe) for pipe in pipes]
         
-        # Turn all pipes off
-        for pipe in self.pipes.values():
-            pipe.active = False
+        for pipe_name, pipe in self.pipes.items():
+            pipe.active = pipe_name in self.active_pipes
         
-        # Turn active ones back on
-        for pipe in self.active_pipes:
-            self.pipes[pipe].active = True
-        
-        # # >>
+        # >>
         # Automatic graph construction -- not done yet
         
-        entrypoint = 64
+        # entrypoint = 64
         
-        self.graph = {'graph_input' : None}
-        for cell_name, cell in self.cells.items():
-            if cell_name != entrypoint:
-                self.graph[cell_name] = (cell, '%d_acc' % cell_name)
-                
-                acc_name = '%d_acc' % cell_name
-                acc_pipes = [pipe_name for pipe_name in self.pipes.keys() if pipe_name[1] == cell_name]
-                if len(acc_pipes):
-                    self.graph[acc_name] = (Accumulate(name=acc_name), self._filter_pipes(acc_pipes))
-            else:
-                self.graph[cell_name] = (cell, 'graph_input')
+        # self.graph = {'graph_input' :  None}
+        # for cell_name, cell in self.cells.items():
+        #     if cell_name != entrypoint:
+        #         acc_name = '%d_acc' % cell_name
+        #         self.graph[cell_name] = (cell, acc_name)
+        #         acc_pipes = list(filter(lambda p: (p[1] == cell_name) and self.pipes[p].active, self.pipe_names))
+        #         if len(acc_pipes):
+        #             self.graph[acc_name] = (Accumulate(name=acc_name), acc_pipes)
+        #     else:
+        #         self.graph[cell_name] = (cell, 'graph_input')
         
-        for pipe_name, pipe in self.pipes.items():
-            self.graph[pipe_name] = (pipe, pipe_name[0])
+        # for pipe_name, pipe in self.pipes.items():
+        #     self.graph[pipe_name] = (pipe, pipe_name[0])
         
-        # # <<
+        # # toposort
+        
+        # <<
         
         self.graph = {
             'graph_input' : None,
