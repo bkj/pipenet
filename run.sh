@@ -15,6 +15,7 @@ python pretrain.py --train-size 0.9 --seed 123 --outpath ./models/linear-0.9
 
 python main.py --pretrained-weights ./models/linear-0.9/weights \
     --seed 123 \
+    --horizon \
     --outpath ./results/pretrained-fixed.pkl
 
 # --
@@ -26,6 +27,7 @@ python main.py \
     --seed 123 \
     --learn-mask \
     --ppo-epochs 50 \
+    --horizon \
     --outpath ./results/pretrained-learned.pkl
 
 
@@ -34,7 +36,6 @@ python main.py \
     --seed 123 \
     --learn-mask \
     --ppo-epochs 50 \
-    --no-horizon \
     --outpath ./results/pretrained-learned-nohorizon.pkl
 
 # --
@@ -52,7 +53,6 @@ python main.py \
     --seed 123 \
     --ppo-epochs 50 \
     --learn-mask \
-    --no-horizon \
     --outpath ./results/trained-learned-nohorizon.pkl
 
 # --
@@ -63,8 +63,20 @@ python main.py \
     --ppo-epochs 50 \
     --learn-mask \
     --train-mask \
-    --no-horizon \
     --outpath ./results/pipenet.pkl
+
+# This works -- converges to all 1s
+# Is that a degenerate solution or the right one?
+
+# --
+# Learned pipes / learned mask (w/ one bad pipe)
+
+python main.py \
+    --seed 123 \
+    --ppo-epochs 500 \
+    --learn-mask \
+    --train-mask \
+    --outpath ./results/pipenet-qblock-2.pkl
 
 # Number of train batches here is off, because some of the batches fail
 # Should keep track of number of failed training pulls

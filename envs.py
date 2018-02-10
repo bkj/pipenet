@@ -45,7 +45,7 @@ class Looper(object):
 class BaseEnv(object):
     _eval_mode = 'val'
     
-    def __init__(self, worker=None, dataloaders=None, seed=222, learn_mask=True, train_mask=False, no_horizon=False):
+    def __init__(self, worker=None, dataloaders=None, seed=222, learn_mask=True, train_mask=False, horizon=False):
         
         assert worker is not None
         assert dataloaders is not None
@@ -55,7 +55,7 @@ class BaseEnv(object):
         
         self.learn_mask = learn_mask
         self.train_mask = train_mask
-        self.no_horizon = no_horizon
+        self.horizon = horizon
         
         self.dataloaders = {
             "train" : Looper(dataloaders['train']),
@@ -78,7 +78,7 @@ class BaseEnv(object):
         
         payout = np.array(payout).reshape(-1, 1)
         
-        is_done = np.array([self.no_horizon] * masks.shape[0]).reshape(-1, 1)
+        is_done = np.array([self.horizon] * masks.shape[0]).reshape(-1, 1)
         state = self._random_state()
         
         return state, payout, is_done, None

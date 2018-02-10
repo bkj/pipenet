@@ -51,11 +51,7 @@ def parse_args():
     parser.add_argument('--learn-mask', action="store_true")
     parser.add_argument('--train-mask', action="store_true")
     
-    # >>
-    parser.add_argument('--blacklist', action="store_true")
-    # <<
-    
-    parser.add_argument('--no-horizon', action="store_true") # infinite vs 0 horizon
+    parser.add_argument('--horizon', action="store_true") # infinte vs 0 horizon
     
     parser.add_argument('--train-size', type=float, default=0.9)
     parser.add_argument('--child-lr-init', type=float, default=0.01)
@@ -119,13 +115,14 @@ if args.pretrained_weights is not None:
         seed=args.seed,
         learn_mask=args.learn_mask,
         train_mask=args.train_mask,
-        no_horizon=args.no_horizon,
+        horizon=args.horizon,
     )
 else:
     lr_scheduler = getattr(LRSchedule, args.child_lr_schedule)(
         lr_init=args.child_lr_init,
         epochs=args.child_lr_epochs,
     )
+    
     worker = PipeNet(loss_fn=F.cross_entropy, lr_scheduler=lr_scheduler).cuda()
     env = TrainEnv(
         worker=worker,
@@ -133,7 +130,7 @@ else:
         seed=args.seed,
         learn_mask=args.learn_mask,
         train_mask=args.train_mask,
-        no_horizon=args.no_horizon,
+        horizon=args.horizon,
     )
 
 ppo = SinglePathPPO(
@@ -165,6 +162,8 @@ roll_gen = RolloutGenerator(
 # --
 # Run
 
+print(worker, file=sys.stderr)
+
 start_time = time()
 ppo_epoch = 0
 history = []
@@ -195,7 +194,7 @@ while roll_gen.step_index < args.total_steps:
         ("pretrained_weights", args.pretrained_weights is not None),
     ]))
     
-    print(history[-1])
+    print(json.dumps(history[-1]))
     
     # --
     # Update model parameters
