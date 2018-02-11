@@ -42,19 +42,13 @@ class Looper(object):
 # Environments
 
 class BaseEnv(object):
-    _eval_mode = 'val'
-    
     def __init__(self, worker=None, dataloaders=None, seed=222, learn_mask=True, train_mask=False, horizon=False):
         
         assert worker is not None
         assert dataloaders is not None
         
         self.worker = worker
-        self._pipes = np.array(list(worker.pipes.keys()))
         
-        self.learn_mask = learn_mask
-        self.train_mask = train_mask
-        self.horizon = horizon
         
         self.dataloaders = {
             "train" : Looper(dataloaders['train']),
@@ -63,6 +57,16 @@ class BaseEnv(object):
         }
         
         self.rs = np.random.RandomState(seed=seed)
+        
+        self.learn_mask = learn_mask
+        self.train_mask = train_mask
+        self.horizon    = horizon
+        
+        self._pipes = np.array(list(worker.pipes.keys()))
+        self._total_train_steps = 0
+        self._total_eval_steps  = 0
+        self._valid_train_steps = 0
+        self._valid_eval_steps  = 0
     
     def _random_state(self):
         return self.rs.normal(0, 1, (8, 32))
@@ -83,7 +87,7 @@ class BaseEnv(object):
         return state, payout, is_done, None
     
     def _eval(self, mask):
-        data, target = next(self.dataloaders[self._eval_mode])
+        data, target = next(self.dataloaders['val'])
         data = Variable(data, volatile=True).cuda()
         
         if self.learn_mask:
@@ -92,7 +96,9 @@ class BaseEnv(object):
         else:
             self.worker.reset_pipes()
         
+        self._total_eval_steps += 1
         if self.worker.is_valid:
+            self._valid_eval_steps += 1
             return self.worker.eval_batch(data, target)
         else:
             return 0.0
@@ -107,7 +113,9 @@ class BaseEnv(object):
         else:
             self.worker.reset_pipes()
         
+        self._total_train_steps += 1
         if self.worker.is_valid:
+            self._valid_train_steps += 1
             return self.worker.train_batch(data, target)
         else:
             return 0.0
@@ -117,7 +125,6 @@ class TrainEnv(BaseEnv):
     def step(self, masks):
         
         for mask in masks:
-            print('train', mask)
             _ = self._train(mask)
         
         return super(TrainEnv, self).step(masks)
