@@ -13,7 +13,6 @@ from torch.nn import functional as F
 from torch.autograd import Variable
 
 from helpers import to_numpy
-from pipenet import PipeException
 
 # --
 # Helpers
@@ -93,12 +92,10 @@ class BaseEnv(object):
         else:
             self.worker.reset_pipes()
         
-        try:
+        if self.worker.is_valid:
             return self.worker.eval_batch(data, target)
-        except PipeException:
+        else:
             return 0.0
-        except:
-            raise
     
     def _train(self, mask):
         data, target = next(self.dataloaders['train'])
@@ -110,18 +107,17 @@ class BaseEnv(object):
         else:
             self.worker.reset_pipes()
         
-        try:
+        if self.worker.is_valid:
             return self.worker.train_batch(data, target)
-        except PipeException:
+        else:
             return 0.0
-        except:
-            raise
 
 
 class TrainEnv(BaseEnv):
     def step(self, masks):
         
         for mask in masks:
+            print('train', mask)
             _ = self._train(mask)
         
         return super(TrainEnv, self).step(masks)

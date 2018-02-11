@@ -85,7 +85,10 @@ def parse_args():
     args = parser.parse_args()
     
     def save():
-        pickle.dump(history, open(args.outpath, 'wb'))
+        try:
+            pickle.dump(history, open(args.outpath, 'wb'))
+        except:
+            pass
         
     atexit.register(save)
     
@@ -133,6 +136,12 @@ else:
         horizon=args.horizon,
     )
 
+# >>
+# _ = env.reset()
+# actions = np.random.choice((0, 1), (8, len(worker.pipes)))
+# _ = env.step(actions)
+# <<
+
 ppo = SinglePathPPO(
     n_outputs=len(worker.pipes),
     ppo_lr=args.ppo_lr,
@@ -167,7 +176,7 @@ print(worker, file=sys.stderr)
 start_time = time()
 ppo_epoch = 0
 history = []
-while roll_gen.step_index < args.total_steps:
+while ppo_epoch < args.ppo_epochs:
     
     # --
     # Sample a batch of rollouts
@@ -179,7 +188,6 @@ while roll_gen.step_index < args.total_steps:
     
     history.append(OrderedDict([
         ("ppo_epoch",     ppo_epoch),
-        ("step_index",    roll_gen.step_index),
         ("mean_reward",   mean_reward),
         ("action_counts", action_counts),
         ("elapsed_time",  time() - start_time),
@@ -194,7 +202,9 @@ while roll_gen.step_index < args.total_steps:
         ("pretrained_weights", args.pretrained_weights is not None),
     ]))
     
-    print(json.dumps(history[-1]))
+    print('-' * 50)
+    for k,v in history[-1].items():
+        print(k, '\t\t\t', v)
     
     # --
     # Update model parameters
@@ -209,10 +219,6 @@ while roll_gen.step_index < args.total_steps:
             _ = ppo.step(**minibatch)
     
     ppo_epoch += 1
-    
-    if ppo_epoch > args.ppo_epochs:
-        break
-
 
 # # --
 # # Inspect

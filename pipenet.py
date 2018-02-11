@@ -10,6 +10,7 @@ import sys
 import itertools
 import numpy as np
 from dask import get
+from dask.optimize import cull
 from pprint import pprint
 from collections import OrderedDict
 
@@ -20,15 +21,15 @@ from torch.autograd import Variable
 
 from basenet import BaseNet
 
-# --
-# Model definition
-
-class PipeException(Exception):
+class InvalidGraphException(Exception):
     pass
 
-class Accumulate(nn.Module):
-    def __init__(self, agg_fn=torch.mean, name='noname'):
-        super(Accumulate, self).__init__()
+# --
+# Blocks
+
+class Accumulator(nn.Module):
+    def __init__(self, agg_fn=torch.sum, name='noname'):
+        super(Accumulator, self).__init__()
         self.agg_fn = agg_fn
         self.name = name
     
@@ -40,7 +41,7 @@ class Accumulate(nn.Module):
             return self.agg_fn(torch.stack(parts), dim=0)
     
     def __repr__(self):
-        return 'Accumulate(%s)' % self.name
+        return 'Accumulator(%s)' % self.name
 
 
 class PBlock(nn.Module):
@@ -62,13 +63,11 @@ class PBlock(nn.Module):
     
     def forward(self, x):
         if self.active and (x is not None):
-            if self.verbose:
-                print('run:', self)
-            
             out = F.relu(self.bn1(x))
             shortcut = self.shortcut(out) if hasattr(self, 'shortcut') else x
             out = self.conv1(out)
             out = self.conv2(F.relu(self.bn2(out)))
+            
             return out + shortcut
         else:
             return None
@@ -76,40 +75,29 @@ class PBlock(nn.Module):
     def __repr__(self):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
-# >>
 
-class QBlock(nn.Module):
-    """ same as PBlock, but w/o batchnorm """
+class CBlock(nn.Module):
+    """ same as PBlock, but w/o batchnorm or activations """
     def __init__(self, in_planes, planes, stride=1, active=True, verbose=False):
-        super(QBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
-        
-        if stride != 1 or in_planes != planes:
-            self.shortcut = nn.Sequential(nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False))
+        super(CBlock, self).__init__()
+        self.conv = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         
         self.active    = active
-        self.verbose   = verbose
         self.in_planes = in_planes
         self.planes    = planes
         self.stride    = stride
     
     def forward(self, x):
         if self.active and (x is not None):
-            if self.verbose:
-                print('run:', self)
-            
-            out = self.conv1(x)
-            out = self.conv2(out)
-            return out.detach()
+            return self.conv(x)
         else:
             return None
     
     def __repr__(self):
-        return 'QBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
+        return 'CBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
-# <<
-
+# --
+# Network
 
 class PipeNet(BaseNet):
     def __init__(self, num_blocks=[2, 2, 2, 2], lr_scheduler=None, num_classes=10, blacklist=None, **kwargs):
@@ -127,6 +115,7 @@ class PipeNet(BaseNet):
         # --
         # Construct dense graph
         
+        self._graph_entrypoint = 2 ** 6
         cell_sizes = [int(c) for c in 2 ** np.arange(6, 10)]
         
         self.cells = OrderedDict([])
@@ -136,7 +125,7 @@ class PipeNet(BaseNet):
         self.pipes = OrderedDict([])
         for cell_size_0, cell_size_1 in itertools.combinations(cell_sizes, 2):
             self.pipes[(cell_size_0, cell_size_1, 0)] = PBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
-            self.pipes[(cell_size_0, cell_size_1, 1)] = QBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
+            self.pipes[(cell_size_0, cell_size_1, 1)] = CBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
         
         for k, v in self.cells.items():
             self.add_module(str(k), v)
@@ -144,7 +133,7 @@ class PipeNet(BaseNet):
         for k, v in self.pipes.items():
             self.add_module(str(k), v)
         
-        self.pipe_names = np.array(list(self.pipes.keys()))
+        self.pipe_names = list(self.pipes.keys())
         
         # --
         # Classifier
@@ -154,8 +143,7 @@ class PipeNet(BaseNet):
         # --
         # Set default pipes
         
-        self.default_pipes = zip(cell_sizes[:-1], cell_sizes[1:], [0] * (len(cell_sizes) - 1))
-        print('default_pipes: ', self.default_pipes)
+        self._default_pipes = list(zip(cell_sizes[:-1], cell_sizes[1:], [0] * (len(cell_sizes) - 1)))
         self.reset_pipes()
         
         self.init_optimizer(
@@ -167,10 +155,17 @@ class PipeNet(BaseNet):
         )
     
     def reset_pipes(self):
-        self.set_pipes(self.default_pipes)
+        self.set_pipes(self._default_pipes)
+    
+    def get_pipes(self):
+        return [pipe_name for pipe_name, pipe in self.pipes.items() if pipe.active]
+    
+    def get_pipes_mask(self):
+        return [pipe.active for pipe in self.pipes.values()]
     
     def set_pipes_mask(self, mask):
-        self.set_pipes(self.pipe_names[mask])
+        assert mask.dtype == np.bool
+        self.set_pipes(np.array(self.pipe_names)[mask])
     
     def set_pipes(self, pipes):
         self.active_pipes = [tuple(pipe) for pipe in pipes]
@@ -178,69 +173,39 @@ class PipeNet(BaseNet):
         for pipe_name, pipe in self.pipes.items():
             pipe.active = pipe_name in self.active_pipes
         
-        # >>
-        # Automatic graph construction -- not done yet
+        # Create cells + accumulators
+        self.graph = {'_graph_input' :  None}
+        for cell_name, cell in self.cells.items():
+            if cell_name != self._graph_entrypoint:
+                acc_name = '%d_acc' % cell_name
+                
+                # Determine active inputs
+                in_pipes = filter(lambda p: p[1] == cell_name, self.pipe_names)
+                in_pipes = filter(lambda p: self.pipes[p].active, in_pipes)
+                in_pipes = list(in_pipes)
+                
+                self.graph[cell_name] = (cell, acc_name)
+                self.graph[acc_name]  = (Accumulator(name=acc_name), in_pipes)
+            else:
+                self.graph[cell_name] = (cell, '_graph_input')
         
-        # entrypoint = 64
-        
-        # self.graph = {'graph_input' :  None}
-        # for cell_name, cell in self.cells.items():
-        #     if cell_name != entrypoint:
-        #         acc_name = '%d_acc' % cell_name
-        #         self.graph[cell_name] = (cell, acc_name)
-        #         acc_pipes = list(filter(lambda p: (p[1] == cell_name) and self.pipes[p].active, self.pipe_names))
-        #         if len(acc_pipes):
-        #             self.graph[acc_name] = (Accumulate(name=acc_name), acc_pipes)
-        #     else:
-        #         self.graph[cell_name] = (cell, 'graph_input')
-        
-        # for pipe_name, pipe in self.pipes.items():
-        #     self.graph[pipe_name] = (pipe, pipe_name[0])
-        
-        # # toposort
-        
-        # <<
-        
-        self.graph = {
-            'graph_input' : None,
-            
-            64         : (self.cells[64], 'graph_input'),
-            128        : (self.cells[128], '128_acc'),
-            256        : (self.cells[256], '256_acc'),
-            512        : (self.cells[512], '512_acc'),
-            
-            (64, 128, 0)  : (self.pipes[(64, 128, 0)], 64),
-            (64, 256, 0)  : (self.pipes[(64, 256, 0)], 64),
-            (128, 256, 0) : (self.pipes[(128, 256, 0)], 128),
-            (64, 512, 0)  : (self.pipes[(64, 512, 0)], 64),
-            (128, 512, 0) : (self.pipes[(128, 512, 0)], 128),
-            (256, 512, 0) : (self.pipes[(256, 512, 0)], 256),
-            
-            (64, 128, 1)  : (self.pipes[(64, 128, 1)], 64),
-            (64, 256, 1)  : (self.pipes[(64, 256, 1)], 64),
-            (128, 256, 1) : (self.pipes[(128, 256, 1)], 128),
-            (64, 512, 1)  : (self.pipes[(64, 512, 1)], 64),
-            (128, 512, 1) : (self.pipes[(128, 512, 1)], 128),
-            (256, 512, 1) : (self.pipes[(256, 512, 1)], 256),
-            
-            '128_acc'  : (Accumulate(name='128_acc'), self._filter_pipes([(64, 128, 0)] + [(64, 128, 1)])),
-            '256_acc'  : (Accumulate(name='256_acc'), self._filter_pipes([(64, 256, 0), (128, 256, 0)] + [(64, 256, 1), (128, 256, 1)])),
-            '512_acc'  : (Accumulate(name='512_acc'), self._filter_pipes([(64, 512, 0), (128, 512, 0), (256, 512, 0)] + [(64, 512, 1), (128, 512, 1), (256, 512, 1)])),
-        }
+        # Create pipes
+        for pipe_name, pipe in self.pipes.items():
+            self.graph[pipe_name] = (pipe, pipe_name[0])
     
-    def _filter_pipes(self, pipes):
-        active_pipe_names = [pipe_name for pipe_name,pipe in self.pipes.items() if pipe.active]
-        return [pipe for pipe in pipes if pipe in active_pipe_names]
+    @property
+    def is_valid(self, layer=512):
+        return '_graph_input' in cull(self.graph, layer)[0]
     
     def forward(self, x, layer=512):
+        if not self.is_valid:
+            raise InvalidGraphException
+        
         out = F.relu(self.bn1(self.conv1(x)))
         
-        self.graph['graph_input'] = out
+        self.graph['_graph_input'] = out
         out = get(self.graph, layer)
-        self.graph['graph_input'] = None
-        
-        if out is None:
-            raise PipeException
+        self.graph['_graph_input'] = None
         
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
@@ -252,8 +217,26 @@ if __name__ == "__main__":
     
     model = PipeNet()
     print(model)
-    
     x = Variable(torch.randn(16, 3, 32, 32))
-    
-    model.set_pipes([(64, 128), (128, 256), (256, 512)])
     print(model(x).shape)
+    
+    mask = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]).astype(bool)
+    model.set_pipes_mask(mask)
+    model.get_pipes()
+    
+    model.is_valid
+    
+    model(x).shape
+
+# >>
+
+from dask.dot import dot_graph, to_graphviz
+
+dot_graph(cull(model.graph, 512)[0])
+
+# <<
+
+
+
+
+
