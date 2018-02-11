@@ -76,7 +76,7 @@ python main.py \
     --ppo-epochs 500 \
     --learn-mask \
     --train-mask \
-    --outpath ./results/pipenet-qblock-3.pkl
+    --outpath ./results/pipenet-qblock-4.pkl
 
 # Number of train batches here is high, because some of the batches fail
 # Should keep track of number of failed training pulls

@@ -63,10 +63,10 @@ class BaseEnv(object):
         self.horizon    = horizon
         
         self._pipes = np.array(list(worker.pipes.keys()))
-        self._total_train_steps = 0
-        self._total_eval_steps  = 0
-        self._valid_train_steps = 0
-        self._valid_eval_steps  = 0
+        self.total_train_steps = 0
+        self.total_eval_steps  = 0
+        self.valid_train_steps = 0
+        self.valid_eval_steps  = 0
     
     def _random_state(self):
         return self.rs.normal(0, 1, (8, 32))
@@ -91,14 +91,13 @@ class BaseEnv(object):
         data = Variable(data, volatile=True).cuda()
         
         if self.learn_mask:
-            mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-            self.worker.set_pipes(mask_pipes)
+            self.worker.set_pipes_mask(mask == 1)
         else:
             self.worker.reset_pipes()
         
-        self._total_eval_steps += 1
+        self.total_eval_steps += 1
         if self.worker.is_valid:
-            self._valid_eval_steps += 1
+            self.valid_eval_steps += 1
             return self.worker.eval_batch(data, target)
         else:
             return 0.0
@@ -108,14 +107,13 @@ class BaseEnv(object):
         data, target = Variable(data.cuda()), Variable(target.cuda())
         
         if self.train_mask:
-            mask_pipes = [tuple(pipe) for pipe in self._pipes[mask == 1]]
-            self.worker.set_pipes(mask_pipes)
+            self.worker.set_pipes_mask(mask == 1)
         else:
             self.worker.reset_pipes()
         
-        self._total_train_steps += 1
+        self.total_train_steps += 1
         if self.worker.is_valid:
-            self._valid_train_steps += 1
+            self.valid_train_steps += 1
             return self.worker.train_batch(data, target)
         else:
             return 0.0

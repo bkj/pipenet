@@ -98,7 +98,7 @@ def parse_args():
 # Args
 
 args = parse_args()
-print(json.dumps(vars(args), indent=2), file=sys.stderr)
+print('args ->', json.dumps(vars(args), indent=2), file=sys.stderr)
 set_seeds(args.seed)
 
 # --
@@ -136,11 +136,7 @@ else:
         horizon=args.horizon,
     )
 
-# >>
-# _ = env.reset()
-# actions = np.random.choice((0, 1), (8, len(worker.pipes)))
-# _ = env.step(actions)
-# <<
+print('worker ->', worker, file=sys.stderr)
 
 ppo = SinglePathPPO(
     n_outputs=len(worker.pipes),
@@ -162,7 +158,7 @@ roll_gen = RolloutGenerator(
     advantage_gamma=args.advantage_gamma,
     advantage_lambda=args.advantage_lambda,
     cuda=args.cuda,
-    num_workers=args.num_workers, # 8 steps at once
+    num_workers=args.num_workers,
     num_frames=args.num_frames,
     action_dim=len(worker.pipes),
     mode='lever'
@@ -171,15 +167,10 @@ roll_gen = RolloutGenerator(
 # --
 # Run
 
-print(worker, file=sys.stderr)
-
 start_time = time()
 ppo_epoch = 0
 history = []
 while ppo_epoch < args.ppo_epochs:
-    
-    # --
-    # Sample a batch of rollouts
     
     roll_gen.next()
     
@@ -196,6 +187,11 @@ while ppo_epoch < args.ppo_epochs:
         ("val_epochs",   env.dataloaders['val'].epochs),
         ("test_epochs",  env.dataloaders['test'].epochs),
         
+        ("total_train_steps", env.total_train_steps),
+        ("total_eval_steps", env.total_eval_steps),
+        ("valid_train_steps", env.valid_train_steps),
+        ("valid_eval_steps", env.valid_eval_steps),
+        
         ("learn_mask", args.learn_mask),
         ("train_mask", args.train_mask),
         
@@ -204,10 +200,7 @@ while ppo_epoch < args.ppo_epochs:
     
     print('-' * 50)
     for k,v in history[-1].items():
-        print(k, '\t\t\t', v)
-    
-    # --
-    # Update model parameters
+        print(k, ' ' * (25 - len(k)), v)
     
     ppo.backup()
     for epoch in range(args.epochs_per_batch):

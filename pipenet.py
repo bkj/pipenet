@@ -228,15 +228,6 @@ if __name__ == "__main__":
     
     model(x).shape
 
-# >>
-
-from dask.dot import dot_graph, to_graphviz
-
-dot_graph(cull(model.graph, 512)[0])
-
-# <<
-
-
 
 
 
