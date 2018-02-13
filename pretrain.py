@@ -31,7 +31,12 @@ def parse_args():
     parser.add_argument('--outpath', type=str)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--lr-schedule', type=str, default='linear')
-    parser.add_argument('--lr-init', type=float, default=0.1)
+    parser.add_argument('--lr-init', type=float, default=0.05)
+    
+    # SGDR options
+    parser.add_argument('--sgdr-period-length', type=float, default=30)
+    parser.add_argument('--sgdr-t-mult',  type=float, default=2)
+    
     parser.add_argument('--train-size', type=float, default=1.0)
     parser.add_argument('--seed', type=int, default=123)
     return parser.parse_args()
@@ -45,11 +50,17 @@ if __name__ == "__main__":
     if not os.path.exists(args.outpath):
         os.makedirs(args.outpath)
     
-    set_seeds(args.seed)
-    print('seed=%d' % args.seed)
+    json.dump(vars(args), open(os.path.join(args.outpath, 'config'), 'w'))
     
-    dataloaders = make_cifar_dataloaders(train_size=0.9, download=False, seed=args.seed)
-    lr_scheduler = getattr(LRSchedule, args.lr_schedule)(lr_init=args.lr_init, epochs=args.epochs)
+    set_seeds(args.seed)
+    
+    dataloaders = make_cifar_dataloaders(train_size=args.train_size, download=False, seed=args.seed)
+    lr_scheduler = getattr(LRSchedule, args.lr_schedule)(**{
+        "lr_init"       : args.lr_init,
+        "epochs"        : args.epochs,
+        "period_length" : args.sgdr_period_length,
+        "t_mult"        : args.sgdr_t_mult,
+    })
     worker = PipeNet(lr_scheduler=lr_scheduler, loss_fn=F.cross_entropy).cuda()
     
     logfile = open(os.path.join(args.outpath, 'log'), 'w')
@@ -59,6 +70,7 @@ if __name__ == "__main__":
         train_score = worker.train_epoch(dataloaders)
         res = {
             "epoch"        : epoch,
+            "lr"           : worker.lr,
             "train_score"  : train_score,
             "val_score"    : worker.eval_epoch(dataloaders, mode='val'),
             "test_score"   : worker.eval_epoch(dataloaders, mode='test'),

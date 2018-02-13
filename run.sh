@@ -65,24 +65,57 @@ python main.py \
     --train-mask \
     --outpath ./results/pipenet.pkl
 
-# This works -- converges to all 1s
-# Is that a degenerate solution or the right one?
-
 # --
 # Learned pipes / learned mask (w/ one bad pipe)
 
-python main.py \
-    --seed 123 \
-    --ppo-epochs 500 \
-    --learn-mask \
-    --train-mask \
-    --outpath ./results/pipenet-qblock-4.pkl
-
-# Number of train batches here is high, because some of the batches fail
-# Should keep track of number of failed training pulls
+for i in $(seq 3); do
+    python main.py \
+        --seed 123 \
+        --ppo-epochs 400 \
+        --learn-mask \
+        --train-mask \
+        --outpath ./results/pipenet-qblock.$i.pkl
+done
 
 # --
 # Open questions
 
 # !! How should the attribution business be working?
 #   Should record number of times a cell is sucessfully trained
+
+
+# =======================================================================================
+
+python pretrain.py \
+    --train-size 0.9 \
+    --seed 123 \
+    --epochs 210 \
+    --lr-schedule sgdr \
+    --sgdr-period-length 30 \
+    --sgdr-t-mult 2 \
+    --outpath ./models/sgdr-train0.9
+
+python pretrain.py \
+    --train-size 0.9 \
+    --seed 123 \
+    --epochs 210 \
+    --lr-schedule linear \
+    --lr-init 0.05 \
+    --outpath ./models/linear-lr0.05-train0.9
+
+python pretrain.py \
+    --train-size 1.0 \
+    --seed 123 \
+    --epochs 210 \
+    --lr-schedule linear \
+    --lr-init 0.05 \
+    --outpath ./models/linear-lr0.05-train1.0
+
+python pretrain.py \
+    --train-size 1.0 \
+    --seed 123 \
+    --epochs 210 \
+    --lr-schedule linear \
+    --lr-init 0.10 \
+    --outpath ./models/linear-lr0.10-train1.0
+

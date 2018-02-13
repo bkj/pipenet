@@ -172,7 +172,13 @@ ppo_epoch = 0
 history = []
 while ppo_epoch < args.ppo_epochs:
     
+    # --
+    # Rollouts
+    
     roll_gen.next()
+    
+    # --
+    # Logging
     
     mean_reward = roll_gen.batch['rewards'].mean()
     action_counts = list(roll_gen.batch['actions'].cpu().numpy().mean(axis=0))
@@ -201,6 +207,12 @@ while ppo_epoch < args.ppo_epochs:
     print('-' * 50)
     for k,v in history[-1].items():
         print(k, ' ' * (25 - len(k)), v)
+    
+    if not ppo_epoch % 50:
+        pickle.dump(history, open(args.outpath, 'wb'))
+    
+    # --
+    # Train PPO
     
     ppo.backup()
     for epoch in range(args.epochs_per_batch):

@@ -84,3 +84,13 @@ class LRSchedule(object):
             return lr_min + 0.5 * (lr_init - lr_min) * (1 + np.cos(period_progress * np.pi))
         
         return f
+
+
+if __name__ == "__main__":
+    from rsub import *
+    from matplotlib import pyplot as plt
+    
+    lr = LRSchedule.sgdr(period_length=30, t_mult=2)
+    
+    _ = plt.plot(lr(np.arange(450)))
+    show_plot()

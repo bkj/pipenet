@@ -24,6 +24,7 @@ class BaseNet(nn.Module):
         self.opt = None
         self.progress = 0
         self.epoch = 0
+        self.lr = -1
     
     # --
     # Optimization
