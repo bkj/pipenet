@@ -66,16 +66,25 @@ python main.py \
     --outpath ./results/pipenet.pkl
 
 # --
-# Learned pipes / learned mask (w/ one bad pipe)
+# Learned pipes / learned mask
 
-for i in $(seq 3); do
-    python main.py \
-        --seed 123 \
-        --ppo-epochs 400 \
-        --learn-mask \
-        --train-mask \
-        --outpath ./results/pipenet-qblock.$i.pkl
-done
+python main.py \
+    --seed 123 \
+    --ppo-epochs 400 \
+    --learn-mask \
+    --train-mask \
+    --outpath ./results/pipenet-qblock.$i.pkl
+
+
+i=0
+python main.py \
+    --seed 123 \
+    --ppo-epochs 400 \
+    --learn-mask \
+    --train-mask \
+    --child-lr-schedule sgdr \
+    --outpath ./results/pipenet-sgdr.$i
+
 
 # --
 # Open questions
@@ -125,3 +134,5 @@ python pretrain.py \
     --lr-schedule linear \
     --lr-init 0.10 \
     --outpath ./models/linear-lr0.10-train1.0-test
+
+# !! These appear to be comparable to PCIFAR

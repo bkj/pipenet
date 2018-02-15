@@ -46,7 +46,7 @@ def parse_args():
     # --
     # Pipenet options
     
-    parser.add_argument('--outpath', type=str, default='last-history.pkl')
+    parser.add_argument('--outpath', type=str, default='last-history')
     parser.add_argument('--pretrained-weights', type=str)
     parser.add_argument('--learn-mask', action="store_true")
     parser.add_argument('--train-mask', action="store_true")
@@ -54,9 +54,12 @@ def parse_args():
     parser.add_argument('--horizon', action="store_true") # infinte vs 0 horizon
     
     parser.add_argument('--train-size', type=float, default=0.9)
+    
     parser.add_argument('--child-lr-init', type=float, default=0.01)
     parser.add_argument('--child-lr-schedule', type=str, default='constant')
     parser.add_argument('--child-lr-epochs', type=int, default=1000) # !! _estimated_
+    parser.add_argument('--child-sgdr-period-length', type=float, default=30)
+    parser.add_argument('--child-sgdr-t-mult',  type=float, default=2)
     
     # --
     # PPO Options
@@ -86,7 +89,7 @@ def parse_args():
     
     def save():
         try:
-            pickle.dump(history, open(args.outpath, 'wb'))
+            pickle.dump(history, open(args.outpath + '.pkl', 'wb'))
         except:
             pass
         
@@ -100,6 +103,8 @@ def parse_args():
 args = parse_args()
 print('args ->', json.dumps(vars(args), indent=2), file=sys.stderr)
 set_seeds(args.seed)
+
+json.dump(vars(args), open(args.outpath, 'w'))
 
 # --
 # IO
@@ -124,8 +129,9 @@ else:
     lr_scheduler = getattr(LRSchedule, args.child_lr_schedule)(
         lr_init=args.child_lr_init,
         epochs=args.child_lr_epochs,
+        sgdr_period_length=args.child_sgdr_period_length,
+        sgdr_t_mult=args.child_sgdr_t_mult,
     )
-    
     worker = PipeNet(loss_fn=F.cross_entropy, lr_scheduler=lr_scheduler).cuda()
     env = TrainEnv(
         worker=worker,
@@ -192,6 +198,7 @@ while ppo_epoch < args.ppo_epochs:
         ("train_epochs", env.dataloaders['train'].epochs),
         ("val_epochs",   env.dataloaders['val'].epochs),
         ("test_epochs",  env.dataloaders['test'].epochs),
+        ("lr",           worker.lr),
         
         ("total_train_steps", env.total_train_steps),
         ("total_eval_steps", env.total_eval_steps),
@@ -209,7 +216,7 @@ while ppo_epoch < args.ppo_epochs:
         print(k, ' ' * (25 - len(k)), v)
     
     if not ppo_epoch % 50:
-        pickle.dump(history, open(args.outpath, 'wb'))
+        pickle.dump(history, open(args.outpath + '.pkl', 'wb'))
     
     # --
     # Train PPO
@@ -224,6 +231,7 @@ while ppo_epoch < args.ppo_epochs:
             _ = ppo.step(**minibatch)
     
     ppo_epoch += 1
+
 
 # # --
 # # Inspect
