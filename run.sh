@@ -83,7 +83,6 @@ done
 # !! How should the attribution business be working?
 #   Should record number of times a cell is sucessfully trained
 
-
 # =======================================================================================
 
 python pretrain.py \
@@ -119,3 +118,10 @@ python pretrain.py \
     --lr-init 0.10 \
     --outpath ./models/linear-lr0.10-train1.0
 
+python pretrain.py \
+    --train-size 1.0 \
+    --seed 123 \
+    --epochs 210 \
+    --lr-schedule linear \
+    --lr-init 0.10 \
+    --outpath ./models/linear-lr0.10-train1.0-test

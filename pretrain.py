@@ -2,6 +2,11 @@
 
 """
     pretrain.py
+    
+    !! Gives exact same results as pcifar trainer if:
+        - num_workers = 0
+        - random augmentation turned off
+        - cudnn.deterministic = True
 """
 
 from __future__ import print_function, division
@@ -22,6 +27,8 @@ from helpers import set_seeds, to_numpy
 from data import make_cifar_dataloaders
 from pipenet import PipeNet
 from lr import LRSchedule
+
+torch.backends.cudnn.benchmark = True
 
 # --
 # Params
@@ -61,7 +68,10 @@ if __name__ == "__main__":
         "period_length" : args.sgdr_period_length,
         "t_mult"        : args.sgdr_t_mult,
     })
+    
     worker = PipeNet(lr_scheduler=lr_scheduler, loss_fn=F.cross_entropy).cuda()
+    worker.reset_pipes()
+    print(worker, file=sys.stderr)
     
     logfile = open(os.path.join(args.outpath, 'log'), 'w')
     

@@ -63,7 +63,7 @@ def make_cifar_dataloaders(root='data', mode='CIFAR10', train_size=1.0, train_ba
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
-        # !! `trainsform_train` gets applied to _val_ dataset as well
+        # !! `transform_train` gets applied to _val_ dataset as well
         
         transform_test = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
