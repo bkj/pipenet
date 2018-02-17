@@ -55,7 +55,7 @@ def parse_args():
     
     parser.add_argument('--train-size', type=float, default=0.9)
     
-    parser.add_argument('--child-lr-init', type=float, default=0.01)
+    parser.add_argument('--child-lr-init', type=float, default=0.1)
     parser.add_argument('--child-lr-schedule', type=str, default='constant')
     parser.add_argument('--child-lr-epochs', type=int, default=1000) # !! _estimated_
     parser.add_argument('--child-sgdr-period-length', type=float, default=30)
@@ -78,7 +78,7 @@ def parse_args():
     parser.add_argument('--clip-eps', type=float, default=0.2)
     parser.add_argument('--ppo-eps', type=float, default=1e-5)
     parser.add_argument('--ppo-lr', type=float, default=1e-3)
-    parser.add_argument('--entropy-penalty', type=float, default=0.001)
+    parser.add_argument('--entropy-penalty', type=float, default=0)#0.001)
     
     # --
     # Additional options 
@@ -104,7 +104,7 @@ args = parse_args()
 print('args ->', json.dumps(vars(args), indent=2), file=sys.stderr)
 set_seeds(args.seed)
 
-json.dump(vars(args), open(args.outpath, 'w'))
+json.dump(vars(args), open(args.outpath + '.config', 'w'))
 
 # --
 # IO
@@ -115,7 +115,9 @@ dataloaders = make_cifar_dataloaders(train_size=args.train_size, download=False,
 # Define environment
 
 if args.pretrained_weights is not None:
+    print('pretrained_weights -> %s' % args.pretrained_weights, file=sys.stderr)
     worker = PipeNet(loss_fn=F.cross_entropy).cuda()
+    print('worker ->', worker, file=sys.stderr)
     worker.load_state_dict(torch.load(args.pretrained_weights))
     env = BaseEnv(
         worker=worker,
@@ -129,10 +131,11 @@ else:
     lr_scheduler = getattr(LRSchedule, args.child_lr_schedule)(
         lr_init=args.child_lr_init,
         epochs=args.child_lr_epochs,
-        sgdr_period_length=args.child_sgdr_period_length,
-        sgdr_t_mult=args.child_sgdr_t_mult,
+        period_length=args.child_sgdr_period_length,
+        t_mult=args.child_sgdr_t_mult,
     )
     worker = PipeNet(loss_fn=F.cross_entropy, lr_scheduler=lr_scheduler).cuda()
+    print('worker ->', worker, file=sys.stderr)
     env = TrainEnv(
         worker=worker,
         dataloaders=dataloaders,
@@ -141,8 +144,6 @@ else:
         train_mask=args.train_mask,
         horizon=args.horizon,
     )
-
-print('worker ->', worker, file=sys.stderr)
 
 ppo = SinglePathPPO(
     n_outputs=len(worker.pipes),
@@ -198,13 +199,13 @@ while ppo_epoch < args.ppo_epochs:
         ("train_epochs", env.dataloaders['train'].epochs),
         ("val_epochs",   env.dataloaders['val'].epochs),
         ("test_epochs",  env.dataloaders['test'].epochs),
-        ("lr",           worker.lr),
         
         ("total_train_steps", env.total_train_steps),
-        ("total_eval_steps", env.total_eval_steps),
+        ("total_eval_steps",  env.total_eval_steps),
         ("valid_train_steps", env.valid_train_steps),
-        ("valid_eval_steps", env.valid_eval_steps),
+        ("valid_eval_steps",  env.valid_eval_steps),
         
+        ("lr",         worker.lr),
         ("learn_mask", args.learn_mask),
         ("train_mask", args.train_mask),
         
@@ -231,25 +232,5 @@ while ppo_epoch < args.ppo_epochs:
             _ = ppo.step(**minibatch)
     
     ppo_epoch += 1
+    
 
-
-# # --
-# # Inspect
-
-
-# worker.reset_pipes()
-
-# worker.eval_epoch(dataloaders, mode='test')
-# worker.eval_epoch(dataloaders, mode='val')
-# worker.eval_epoch(dataloaders, mode='test')
-
-# _ = plt.plot([h['mean_reward'] for h in history][:300])
-# _ = plt.ylim(0.85, 0.95)
-# show_plot()
-
-# action_counts = np.vstack([h['action_counts'] for h in history])[:500]
-# for i, r in enumerate(action_counts.T):
-#     _ = plt.plot(r, alpha=0.5, label=i)
-
-# plt.legend(loc='lower right')
-# show_plot()

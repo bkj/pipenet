@@ -4,6 +4,9 @@
     envs.py
 """
 
+from __future__ import print_function, division
+
+import sys
 import numpy as np
 from collections import Counter
 
@@ -19,9 +22,10 @@ from helpers import to_numpy
 
 class Looper(object):
     def __init__(self, gen):
-        self.epoch_batches = 0
-        self.total_batches = 0
-        self.epochs        = 0
+        self.batches_per_epoch = len(gen)
+        self.epoch_batches     = 0
+        self.epochs            = 0
+        self.progress          = 0
         
         self._loop = self.__make_loop(gen)
     
@@ -30,7 +34,8 @@ class Looper(object):
             self.epoch_batches = 0
             for x in gen:
                 yield x
-                self.total_batches += 1
+                
+                self.progress = self.epochs + (self.epoch_batches / self.batches_per_epoch)
                 self.epoch_batches += 1
             
             self.epochs += 1
@@ -87,9 +92,6 @@ class BaseEnv(object):
         return state, payout, is_done, None
     
     def _eval(self, mask):
-        data, target = next(self.dataloaders['val'])
-        data = Variable(data, volatile=True).cuda()
-        
         if self.learn_mask:
             self.worker.set_pipes_mask(mask == 1)
         else:
@@ -98,14 +100,14 @@ class BaseEnv(object):
         self.total_eval_steps += 1
         if self.worker.is_valid:
             self.valid_eval_steps += 1
+            
+            data, target = next(self.dataloaders['val'])
+            data = Variable(data, volatile=True).cuda()
             return self.worker.eval_batch(data, target)
         else:
             return 0.0
     
     def _train(self, mask):
-        data, target = next(self.dataloaders['train'])
-        data, target = Variable(data.cuda()), Variable(target.cuda())
-        
         if self.train_mask:
             self.worker.set_pipes_mask(mask == 1)
         else:
@@ -114,6 +116,10 @@ class BaseEnv(object):
         self.total_train_steps += 1
         if self.worker.is_valid:
             self.valid_train_steps += 1
+            
+            data, target = next(self.dataloaders['train'])
+            data, target = Variable(data.cuda()), Variable(target.cuda())
+            self.worker.set_progress(self.dataloaders['train'].progress)
             return self.worker.train_batch(data, target)
         else:
             return 0.0
@@ -121,7 +127,6 @@ class BaseEnv(object):
 
 class TrainEnv(BaseEnv):
     def step(self, masks):
-        
         for mask in masks:
             _ = self._train(mask)
         

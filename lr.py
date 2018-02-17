@@ -31,7 +31,7 @@ class LRSchedule(object):
             param_group['lr'] = lr
     
     @staticmethod
-    def constant(lr_init=0.1, epochs=10):
+    def constant(lr_init=0.1, epochs=10, **kwargs):
         def f(progress):
             return lr_init
         

@@ -6,6 +6,7 @@
 
 from __future__ import print_function, division
 
+import sys
 import numpy as np
 
 import torch
@@ -20,11 +21,11 @@ class BaseNet(nn.Module):
     
     def __init__(self, loss_fn=F.cross_entropy):
         super(BaseNet, self).__init__()
-        self.loss_fn = loss_fn
-        self.opt = None
+        self.loss_fn  = loss_fn
+        self.opt      = None
         self.progress = 0
-        self.epoch = 0
-        self.lr = -1
+        self.epoch    = 0
+        self.lr       = -1
     
     # --
     # Optimization
@@ -33,10 +34,14 @@ class BaseNet(nn.Module):
         assert 'lr' not in kwargs, "BaseNet.init_optimizer: can't set LR from outside"
         if lr_scheduler is not None:
             self.lr_scheduler = lr_scheduler
-            self.opt = opt(params, lr=self.lr_scheduler(0), **kwargs)
+            self.lr  = self.lr_scheduler(0)
+            self.opt = opt(params, lr=self.lr, **kwargs)
+        else:
+            print('BaseNet: lr_scheduler is None', file=sys.stderr)
     
     def set_progress(self, progress):
-        self.progress, self.lr = progress, self.lr_scheduler(progress)
+        self.progress = progress
+        self.lr       = self.lr_scheduler(progress)
         LRSchedule.set_lr(self.opt, self.lr)
     
     # --
@@ -81,7 +86,6 @@ class BaseNet(nn.Module):
         return correct / total
     
     def eval_epoch(self, dataloaders, mode='val', num_batches=np.inf):
-        assert self.opt is not None, "BaseNet: self.opt is None"
         
         loader = dataloaders[mode]
         if loader is None:

@@ -75,25 +75,25 @@ class PBlock(nn.Module):
         return 'PBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
 
-# class CBlock(nn.Module):
-#     """ same as PBlock, but w/o batchnorm or activations """
-#     def __init__(self, in_planes, planes, stride=1, active=True, verbose=False):
-#         super(CBlock, self).__init__()
-#         self.conv = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+class CBlock(nn.Module):
+    """ same as PBlock, but w/o batchnorm or activations """
+    def __init__(self, in_planes, planes, stride=1, active=True, verbose=False):
+        super(CBlock, self).__init__()
+        self.conv = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         
-#         self.active    = active
-#         self.in_planes = in_planes
-#         self.planes    = planes
-#         self.stride    = stride
+        self.active    = active
+        self.in_planes = in_planes
+        self.planes    = planes
+        self.stride    = stride
     
-#     def forward(self, x):
-#         if self.active and (x is not None):
-#             return self.conv(x)
-#         else:
-#             return None
+    def forward(self, x):
+        if self.active and (x is not None):
+            return self.conv(x)
+        else:
+            return None
     
-#     def __repr__(self):
-#         return 'CBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
+    def __repr__(self):
+        return 'CBlock(%d -> %d | stride=%d | active=%d)' % (self.in_planes, self.planes, self.stride, self.active)
 
 # --
 # Network
@@ -122,7 +122,7 @@ class PipeNet(BaseNet):
         self.pipes = OrderedDict([])
         for cell_size_0, cell_size_1 in itertools.combinations(cell_sizes, 2):
             self.pipes[(cell_size_0, cell_size_1, 0)] = PBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
-            # self.pipes[(cell_size_0, cell_size_1, 1)] = CBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
+            self.pipes[(cell_size_0, cell_size_1, 1)] = CBlock(cell_size_0, cell_size_1, stride=int(cell_size_1 / cell_size_0))
         
         for k, v in self.cells.items():
             self.add_module(str(k), v)
@@ -224,7 +224,3 @@ if __name__ == "__main__":
     model.is_valid
     
     model(x).shape
-
-
-
-
